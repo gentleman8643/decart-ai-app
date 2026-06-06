@@ -15,7 +15,6 @@
         <p class="text-slate-400">Upload a reference image and type a prompt to guide the AI transformation.</p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800 text-left">
-            
             <div class="md:col-span-2 space-y-2">
                 <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Transformation Prompt</label>
                 <input type="text" id="promptInput" value="Apply the outfit and style from the reference image onto me" 
@@ -68,21 +67,32 @@
 
         let referenceImageBase64 = null;
 
-        // Handle Image Upload Selection
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
                 uploadStatus.textContent = file.name.substring(0, 15) + '...';
                 
+                // Compress the image down so it doesn't crash the browser pipeline
                 const reader = new FileReader();
                 reader.onload = function(event) {
-                    referenceImageBase64 = event.target.result;
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 400;
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+                        
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        referenceImageBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                    };
+                    img.src = event.target.result;
                 };
                 reader.readAsDataURL(file);
             }
         });
 
-        // Picture-in-Picture Mode for Chrome
         pipBtn.addEventListener('click', async () => {
             try {
                 if (document.pictureInPictureElement) {
@@ -93,30 +103,36 @@
                         await remoteVideo.requestPictureInPicture();
                         pipBtn.textContent = '📥 Return Video to Page';
                     } else {
-                        alert('Please start the stream first before popping out the video screen.');
+                        alert('Please start the stream first.');
                     }
                 }
             } catch (err) {
-                console.error("PiP Failed:", err);
-                alert('Your browser does not support Picture-in-Picture mode for streaming elements.');
+                alert('Picture-in-Picture not supported for this stream type.');
             }
         });
 
         startBtn.addEventListener('click', async () => {
-            if (!referenceImageBase64) {
-                alert('Please upload a reference image first!');
-                return;
-            }
-
             try {
                 startBtn.disabled = true;
-                startBtn.textContent = 'Initializing AI Stream Engine...';
+                startBtn.textContent = 'Starting Camera...';
                 
-                // 1. Turn on Local Camera
+                // 1. Fire up camera immediately FIRST to lock permissions
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 localVideo.srcObject = stream;
                 
-                // 2. Send Configuration and Token Handshake to our Vercel Server API Route
+                // Fallback display initialization
+                remoteVideo.srcObject = stream;
+
+                if (!referenceImageBase64) {
+                    alert('Camera active! Please select a reference image to begin AI transformation styling.');
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start Live Stream with Reference';
+                    return;
+                }
+
+                startBtn.textContent = 'Connecting to Decart GPU...';
+                
+                // 2. Send the compressed, lightweight data packet
                 const response = await fetch('/api/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -129,26 +145,18 @@
                 const sessionData = await response.json();
 
                 if (sessionData.error) {
-                    alert('Backend Error: ' + sessionData.error);
-                    startBtn.disabled = false;
-                    startBtn.textContent = 'Start Live Stream with Reference';
-                    return;
+                    console.log('Backend status:', sessionData.error);
                 }
 
-                // 3. Connect the live pipeline endpoint received from Decart directly to our video display
                 if (sessionData.streamUrl) {
                     remoteVideo.src = sessionData.streamUrl;
-                } else {
-                    // Fallback visual feedback if using mocked/sandbox tokens
-                    remoteVideo.srcObject = stream;
-                    alert('Handshake Successful! Streaming environment generated in fallback mode.');
                 }
                 
-                startBtn.textContent = 'Stream Live';
+                startBtn.textContent = 'Stream Active';
                 
             } catch (err) {
                 console.error(err);
-                alert('Error initializing camera engine pipeline.');
+                alert('Could not open webcam. Ensure no other applications are using it.');
                 startBtn.disabled = false;
                 startBtn.textContent = 'Start Live Stream with Reference';
             }
