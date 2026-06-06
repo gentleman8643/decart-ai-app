@@ -1,4 +1,7 @@
-export default async function handler(req, res) {
+const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+
+module.exports = async function handler(req, res) {
+    // Enable CORS preflight handling
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -19,7 +22,7 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Missing reference image payload.' });
         }
 
-        // FIX: Strip out the browser "data:image..." prefix so Decart gets pure base64
+        // Strip the browser data prefix out so Decart receives pure clean base64 data
         const cleanBase64 = image.includes(',') ? image.split(',')[1] : image;
 
         const apiPayload = {
@@ -48,7 +51,7 @@ export default async function handler(req, res) {
 
         const data = JSON.parse(responseText);
         
-        // FIX: Explicitly bundle keys so index.html finds sessionData.streamUrl instantly
+        // Pack properties clearly so index.html finds sessionData.streamUrl immediately
         return res.status(200).json({
             streamUrl: data.stream_url  data.url  data.streamUrl || null,
             sessionId: data.session_id  data.id  null
@@ -58,4 +61,4 @@ export default async function handler(req, res) {
         console.error("Pipeline Exception:", error);
         return res.status(500).json({ error: Internal execution breakdown: ${error.message} });
     }
-}
+};
