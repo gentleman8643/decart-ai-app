@@ -44,9 +44,15 @@
                 <span class="absolute top-3 left-3 bg-black/60 px-3 py-1 rounded-md text-xs font-medium z-10">Your Webcam / Input</span>
                 <video id="localVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
             </div>
-            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden relative aspect-video">
-                <span class="absolute top-3 left-3 bg-indigo-600 px-3 py-1 rounded-md text-xs font-medium z-10">AI Modified Output</span>
-                <video id="remoteVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+            
+            <div class="flex flex-col gap-2">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden relative aspect-video flex-1">
+                    <span class="absolute top-3 left-3 bg-indigo-600 px-3 py-1 rounded-md text-xs font-medium z-10">AI Modified Output</span>
+                    <video id="remoteVideo" autoplay playsinline class="w-full h-full object-cover"></video>
+                </div>
+                <button id="pipBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium py-2 rounded-lg transition-all border border-slate-700 flex items-center justify-center gap-2">
+                    🖥️ Pop Out Video (Picture-in-Picture)
+                </button>
             </div>
         </div>
     </div>
@@ -54,8 +60,10 @@
     <script>
         const startBtn = document.getElementById('startBtn');
         const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
         const imageInput = document.getElementById('imageInput');
         const uploadStatus = document.getElementById('uploadStatus');
+        const pipBtn = document.getElementById('pipBtn');
 
         let referenceImageBase64 = null;
 
@@ -65,12 +73,31 @@
             if (file) {
                 uploadStatus.textContent = file.name.substring(0, 15) + '...';
                 
-                // Convert image to a format the AI can read later
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     referenceImageBase64 = event.target.result;
                 };
                 reader.readAsDataURL(file);
+            }
+        });
+
+        // Picture-in-Picture Mode for Chrome
+        pipBtn.addEventListener('click', async () => {
+            try {
+                if (document.pictureInPictureElement) {
+                    await document.exitPictureInPicture();
+                    pipBtn.textContent = '🖥️ Pop Out Video (Picture-in-Picture)';
+                } else {
+                    if (remoteVideo.srcObject || remoteVideo.src) {
+                        await remoteVideo.requestPictureInPicture();
+                        pipBtn.textContent = '📥 Return Video to Page';
+                    } else {
+                        alert('Please start the stream first before popping out the video screen.');
+                    }
+                }
+            } catch (err) {
+                console.error("PiP Failed:", err);
+                alert('Your browser does not support Picture-in-Picture mode for streaming elements.');
             }
         });
 
@@ -88,7 +115,10 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 localVideo.srcObject = stream;
                 
-                alert('Image loaded successfully! Ready to feed frame data to Decart.');
+                // Mirror the stream directly onto the AI box for current testing
+                remoteVideo.srcObject = stream;
+                
+                alert('Image loaded! Camera connected. Ready to link Decart environment keys next.');
                 
             } catch (err) {
                 console.error(err);
