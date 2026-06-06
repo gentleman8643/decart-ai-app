@@ -15,6 +15,7 @@
         <p class="text-slate-400">Upload a reference image and type a prompt to guide the AI transformation.</p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800 text-left">
+            
             <div class="md:col-span-2 space-y-2">
                 <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Transformation Prompt</label>
                 <input type="text" id="promptInput" value="Apply the outfit and style from the reference image onto me" 
@@ -36,6 +37,11 @@
                     Start Live Stream with Reference
                 </button>
             </div>
+        </div>
+
+        <div id="previewContainer" class="hidden bg-slate-900 p-4 rounded-xl border border-slate-800 max-w-xs mx-auto text-center space-y-2">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Selected Target Reference:</span>
+            <img id="imagePreview" src="" alt="Reference Preview" class="mx-auto max-h-40 rounded-lg border border-slate-700 object-contain shadow-md">
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
@@ -64,6 +70,8 @@
         const uploadStatus = document.getElementById('uploadStatus');
         const pipBtn = document.getElementById('pipBtn');
         const promptInput = document.getElementById('promptInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const imagePreview = document.getElementById('imagePreview');
 
         let referenceImageBase64 = null;
 
@@ -77,14 +85,20 @@
                     const img = new Image();
                     img.onload = function() {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 300; // Smaller size to guarantee no payload drops
+                        const MAX_WIDTH = 300;
                         const scaleSize = MAX_WIDTH / img.width;
                         canvas.width = MAX_WIDTH;
                         canvas.height = img.height * scaleSize;
                         
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        
+                        // Save the compressed data
                         referenceImageBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                        
+                        // Update the screen so you can visually see the selected picture
+                        imagePreview.src = referenceImageBase64;
+                        previewContainer.classList.remove('hidden');
                     };
                     img.src = event.target.result;
                 };
@@ -115,10 +129,10 @@
                 startBtn.disabled = true;
                 startBtn.textContent = 'Starting Camera Engine...';
                 
-                // Open and secure local video stream
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 localVideo.srcObject = stream;
-                
+                remoteVideo.srcObject = stream;
+
                 if (!referenceImageBase64) {
                     alert('Camera connected! Select a reference image to run the styling matrix.');
                     startBtn.disabled = false;
@@ -128,7 +142,6 @@
 
                 startBtn.textContent = 'Connecting to Decart GPU Server...';
                 
-                // Attempt server handshaking
                 const response = await fetch('/api/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -144,15 +157,12 @@
                     remoteVideo.src = sessionData.streamUrl;
                     startBtn.textContent = 'Stream Active (AI Mode)';
                 } else {
-                    // Fail gracefully directly to fallback feed loop if credentials/endpoint are pending authorization
-                    remoteVideo.srcObject = stream;
-                    startBtn.textContent = 'Stream Active (Local Sandbox Mode)';
-                    console.log('Server context fallback activated.');
+                    startBtn.textContent = 'Stream Active (Sandbox Mode)';
+                    console.log('Server fallback loop active.');
                 }
                 
             } catch (err) {
                 console.error(err);
-                // Fallback inside catch block so the UI never locks out
                 if (localVideo.srcObject) {
                     remoteVideo.srcObject = localVideo.srcObject;
                     startBtn.textContent = 'Stream Active (Sandbox Mode)';
