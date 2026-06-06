@@ -142,7 +142,7 @@
 
                 startBtn.textContent = 'Connecting to Decart GPU Server...';
                 
-                const response = await fetch('/api/stream', {
+                const response = await fetch('/api-stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
