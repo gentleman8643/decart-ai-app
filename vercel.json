@@ -2,8 +2,8 @@
   "version": 2,
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "src": "/api/stream",
+      "dest": "/api/stream.js"
     },
     {
       "src": "/(.*)",
@@ -11,4 +11,3 @@
     }
   ]
 }
-
