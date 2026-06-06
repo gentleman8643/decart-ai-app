@@ -1,84 +1,103 @@
 const https = require('https');
 
-module.exports = async function handler(req, res) {
-    // Handle CORS preflight routing
+module.exports = function (req, res) {
+    // Handle CORS preflight routing safely
     if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+        res.status(200).end();
+        return;
     }
 
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+        res.status(405).json({ error: 'Method not allowed' });
+        return;
     }
 
     const apiKey = process.env.DECART_API_KEY;
     if (!apiKey) {
-        return res.status(500).json({ error: 'Decart API Key configuration missing on host environment.' });
+        res.status(500).json({ error: 'Missing API Key configuration on host environment' });
+        return;
     }
 
-    try {
-        const { image, prompt } = req.body;
+    const image = req.body.image;
+    if (!image) {
+        res.status(400).json({ error: 'Missing image payload' });
+        return;
+    }
 
-        if (!image) {
-            return res.status(400).json({ error: 'Missing reference image payload.' });
+    // Safely strip out the data URI prefix if it exists in the incoming string
+    let cleanBase64 = image;
+    if (image.indexOf(',') !== -1) {
+        cleanBase64 = image.split(',')[1];
+    }
+
+    const payloadString = JSON.stringify({
+        model: "decart-live-v1",
+        input: {
+            reference_image: cleanBase64,
+            prompt: req.body.prompt || "Apply style from reference image",
+            mode: "pose_transfer"
         }
+    });
 
-        // Clean off the data:image prefix string safely
-        const cleanBase64 = image.includes(',') ? image.split(',')[1] : image;
+    const options = {
+        hostname: 'api.decart.ai',
+        port: 443,
+        path: '/v1/live/stream',
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + apiKey.trim(),
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payloadString)
+        }
+    };
 
-        const apiPayload = JSON.stringify({
-            model: "decart-live-v1",
-            input: {
-                reference_image: cleanBase64,
-                prompt: prompt || "Apply style from reference image",
-                mode: "pose_transfer"
-            }
+    const decartReq = https.request(options, function (decartRes) {
+        let rawData = '';
+        
+        decartRes.on('data', function (chunk) {
+            rawData += chunk;
         });
 
-        // Use built-in HTTPS to prevent module bundle failures on Vercel runtime
-        const options = {
-            hostname: 'api.decart.ai',
-            port: 443,
-            path: '/v1/live/stream',
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + apiKey.trim(),
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(apiPayload)
+        decartRes.on('end', function () {
+            if (decartRes.statusCode < 200 || decartRes.statusCode >= 300) {
+                res.status(decartRes.statusCode).json({ error: 'Decart rejected request: ' + rawData });
+                return;
             }
-        };
 
-        const decartRequest = () => {
-            return new Promise((resolve, reject) => {
-                const request = https.request(options, (response) => {
-                    let data = '';
-                    response.on('data', (chunk) => { data += chunk; });
-                    response.on('end', () => {
-                        resolve({ status: response.statusCode, body: data });
-                    });
+            try {
+                const dataParsed = JSON.parse(rawData);
+                
+                // Safely find the streaming URL across potential API variation responses
+                let finalUrl = null;
+                if (dataParsed.stream_url) {
+                    finalUrl = dataParsed.stream_url;
+                } else if (dataParsed.url) {
+                    finalUrl = dataParsed.url;
+                } else if (dataParsed.streamUrl) {
+                    finalUrl = dataParsed.streamUrl;
+                }
+
+                let finalSession = null;
+                if (dataParsed.session_id) {
+                    finalSession = dataParsed.session_id;
+                } else if (dataParsed.id) {
+                    finalSession = dataParsed.id;
+                }
+
+                res.status(200).json({
+                    streamUrl: finalUrl,
+                    sessionId: finalSession
                 });
-
-                request.on('error', (err) => reject(err));
-                request.write(apiPayload);
-                request.end();
-            });
-        };
-
-        const result = await decartRequest();
-
-        if (result.status < 200 || result.status >= 300) {
-            return res.status(result.status).json({ error: 'Decart Engine Rejected Frame: ' + result.body });
-        }
-
-        const dataParsed = JSON.parse(result.body);
-
-        // Map paths directly back to the front-end layout elements
-        return res.status(200).json({
-            streamUrl: dataParsed.stream_url  dataParsed.url  dataParsed.streamUrl || null,
-            sessionId: dataParsed.session_id  dataParsed.id  null
+            } catch (err) {
+                res.status(500).json({ error: 'Failed to parse JSON response from stream gateway' });
+            }
         });
+    });
 
-    } catch (error) {
-        console.error("Pipeline Exception:", error);
-        return res.status(500).json({ error: 'Internal execution breakdown: ' + error.message });
-    }
+    decartReq.on('error', function (e) {
+        res.status(500).json({ error: 'Network communication breakdown: ' + e.message });
+    });
+
+    decartReq.write(payloadString);
+    decartReq.end();
 };
