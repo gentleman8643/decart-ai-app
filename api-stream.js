@@ -1,64 +1,50 @@
-const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+const https = require('https');
 
-module.exports = async function handler(req, res) {
-    // Enable CORS preflight handling
+module.exports = function (req, res) {
+    // 1. Handle browser preflight checks
     if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+        res.status(200).end();
+        return;
     }
 
     const apiKey = process.env.DECART_API_KEY;
     if (!apiKey) {
-        return res.status(500).json({ error: 'Decart API Key configuration missing on host environment.' });
+        res.status(500).json({ error: 'Missing DECART_API_KEY on host' });
+        return;
     }
 
-    try {
-        const { image, prompt } = req.body;
-
-        if (!image) {
-            return res.status(400).json({ error: 'Missing reference image payload.' });
+    // 2. Request an ephemeral token from Decart's authentication system
+    const options = {
+        hostname: 'api.decart.ai',
+        port: 443,
+        path: '/v1/tokens',
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + apiKey.trim(),
+            'Content-Type': 'application/json'
         }
+    };
 
-        // Strip the browser data prefix out so Decart receives pure clean base64 data
-        const cleanBase64 = image.includes(',') ? image.split(',')[1] : image;
-
-        const apiPayload = {
-            model: "decart-live-v1",
-            input: {
-                reference_image: cleanBase64,
-                prompt: prompt || "Apply style from reference image",
-                mode: "pose_transfer"
+    const tokenReq = https.request(options, function (tokenRes) {
+        let rawData = '';
+        tokenRes.on('data', function (chunk) { rawData += chunk; });
+        tokenRes.on('end', function () {
+            if (tokenRes.statusCode < 200 || tokenRes.statusCode >= 300) {
+                res.status(tokenRes.statusCode).json({ error: 'Decart auth failed: ' + rawData });
+                return;
             }
-        };
-
-        const response = await fetch('https://api.decart.ai/v1/live/stream', {
-            method: 'POST',
-            headers: {
-                'Authorization': Bearer ${apiKey.trim()},
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(apiPayload)
+            try {
+                // Return the temporary client access key to the user's browser
+                res.status(200).json(JSON.parse(rawData));
+            } catch (err) {
+                res.status(500).json({ error: 'Token parsing error' });
+            }
         });
+    });
 
-        const responseText = await response.text();
+    tokenReq.on('error', function (e) {
+        res.status(500).json({ error: 'Network error: ' + e.message });
+    });
 
-        if (!response.ok) {
-            return res.status(response.status).json({ error: Decart API Error: ${responseText} });
-        }
-
-        const data = JSON.parse(responseText);
-        
-        // Pack properties clearly so index.html finds sessionData.streamUrl immediately
-        return res.status(200).json({
-            streamUrl: data.stream_url  data.url  data.streamUrl || null,
-            sessionId: data.session_id  data.id  null
-        });
-
-    } catch (error) {
-        console.error("Pipeline Exception:", error);
-        return res.status(500).json({ error: Internal execution breakdown: ${error.message} });
-    }
+    tokenReq.end();
 };
