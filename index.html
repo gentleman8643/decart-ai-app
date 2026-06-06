@@ -1,43 +1,19 @@
-<script src="https://unpkg.com/@decartai/sdk"></script>
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://unpkg.com/@decartai/sdk"></script>
+</head>
+<body>
 
-<script>
-async function startLiveStream() {
-    try {
-        // 1. Fetch the temporary client token from your Vercel backend
-        const response = await fetch('/api-stream.js');
-        const tokenData = await response.json();
-        
-        if (!response.ok) throw new Error(tokenData.error || 'Token creation failed');
+    <video id="localVideo" autoplay></video>
+    <video id="remoteVideo" autoplay></video>
+    <button onclick="startLiveStream()">Start Stream</button>
 
-        // 2. Initialize the Decart SDK client using the generated token 
-        const client = window.createDecartClient({ apiKey: tokenData.apiKey });
-        
-        // 3. Capture camera hardware frames using standard WebRTC constraints
-        const cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: { frameRate: 30, width: 1280, height: 720 },
-            audio: false
-        });
+    <script>
+        async function startLiveStream() {
+            // ... Decart WebRTC tracking connection happens here ...
+        }
+    </script>
 
-        // Feed local camera input to your interface tag
-        document.getElementById('localVideo').srcObject = cameraStream;
-
-        // 4. Spin up the real-time AI processing pipeline
-        const realtimeClient = await client.realtime.connect(cameraStream, {
-            model: "lucy-latest",
-            onRemoteStream: (transformedStream) => {
-                // Feed the processed AI stream straight to your output video player
-                const remoteVideo = document.getElementById('remoteVideo');
-                remoteVideo.srcObject = transformedStream;
-            },
-            onError: (err) => {
-                console.error("Realtime pipe dropped:", err);
-            }
-        });
-
-    } catch (error) {
-        console.error("Pipeline breakdown:", error);
-        // Fall back to sandbox mock frames if the user camera blocks media requests
-        runSandboxMode();
-    }
-}
-</script>
+</body>
+</html>
