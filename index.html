@@ -1,17 +1,71 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <title>Decart AI Stream Live</title>
     <script src="https://unpkg.com/@decartai/sdk"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #111; color: #fff; margin-top: 40px; }
+        video { width: 45%; max-width: 500px; margin: 10px; background: #222; border-radius: 8px; border: 2px solid #333; }
+        button { padding: 12px 24px; font-size: 16px; font-weight: bold; background: #0070f3; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        button:hover { background: #0060d0; }
+    </style>
 </head>
 <body>
 
-    <video id="localVideo" autoplay></video>
-    <video id="remoteVideo" autoplay></video>
+    <h2>Decart Realtime Stream</h2>
+    
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+    
+    <br>
     <button onclick="startLiveStream()">Start Stream</button>
 
     <script>
+        let realtimeSession = null;
+
         async function startLiveStream() {
-            // ... Decart WebRTC tracking connection happens here ...
+            console.log("Requesting backend credentials...");
+            try {
+                // Fetch the temporary client token from your Vercel backend file
+                const response = await fetch('/api-stream.js');
+                const tokenData = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(tokenData.error || 'Token creation rejected');
+                }
+
+                // Initialize Decart SDK using the backend generated token
+                const client = window.createDecartClient({ apiKey: tokenData.apiKey });
+                
+                // Grab browser webcam stream matching the AI model requirements
+                const cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { frameRate: 30, width: 1280, height: 720 },
+                    audio: false
+                });
+
+                // Display your original local webcam feed on the left box
+                document.getElementById('localVideo').srcObject = cameraStream;
+
+                // Fire up direct WebRTC signaling pipeline to Decart servers
+                realtimeSession = await client.realtime.connect(cameraStream, {
+                    model: "lucy-latest",
+                    onRemoteStream: (transformedStream) => {
+                        // Display the processed AI video on the right box
+                        document.getElementById('remoteVideo').srcObject = transformedStream;
+                    },
+                    onError: (err) => {
+                        console.error("Decart pipeline connection failure:", err);
+                        alert("Streaming pipeline disconnected: " + err.message);
+                    }
+                });
+
+                console.log("WebRTC Link Active.");
+
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                alert("Could not start stream. Please check browser developer console (F12).");
+            }
         }
     </script>
 
