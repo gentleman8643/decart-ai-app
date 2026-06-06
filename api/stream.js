@@ -15,16 +15,22 @@ export default async function handler(req, res) {
     try {
         const { image, prompt } = req.body;
 
+        if (!image) {
+            return res.status(400).json({ error: 'Missing reference image payload.' });
+        }
+
+        // FIX: Strip out the browser "data:image..." prefix so Decart gets pure base64
+        const cleanBase64 = image.includes(',') ? image.split(',')[1] : image;
+
         const apiPayload = {
             model: "decart-live-v1",
             input: {
-                reference_image: image,
+                reference_image: cleanBase64,
                 prompt: prompt || "Apply style from reference image",
                 mode: "pose_transfer"
             }
         };
 
-        // UPDATED ENDPOINT: Using the unified real-time live routing structure
         const response = await fetch('https://api.decart.ai/v1/live/stream', {
             method: 'POST',
             headers: {
@@ -34,13 +40,19 @@ export default async function handler(req, res) {
             body: JSON.stringify(apiPayload)
         });
 
+        const responseText = await response.text();
+
         if (!response.ok) {
-            const errorDetails = await response.text();
-            return res.status(response.status).json({ error: Decart System Error: ${errorDetails} });
+            return res.status(response.status).json({ error: Decart API Error: ${responseText} });
         }
 
-        const data = await response.json();
-        return res.status(200).json(data);
+        const data = JSON.parse(responseText);
+        
+        // FIX: Explicitly bundle keys so index.html finds sessionData.streamUrl instantly
+        return res.status(200).json({
+            streamUrl: data.stream_url  data.url  data.streamUrl || null,
+            sessionId: data.session_id  data.id  null
+        });
 
     } catch (error) {
         console.error("Pipeline Exception:", error);
