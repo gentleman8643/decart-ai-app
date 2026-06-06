@@ -64,6 +64,7 @@
         const imageInput = document.getElementById('imageInput');
         const uploadStatus = document.getElementById('uploadStatus');
         const pipBtn = document.getElementById('pipBtn');
+        const promptInput = document.getElementById('promptInput');
 
         let referenceImageBase64 = null;
 
@@ -109,20 +110,45 @@
 
             try {
                 startBtn.disabled = true;
-                startBtn.textContent = 'Processing Image & Connecting...';
+                startBtn.textContent = 'Initializing AI Stream Engine...';
                 
-                // Open Webcam
+                // 1. Turn on Local Camera
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 localVideo.srcObject = stream;
                 
-                // Mirror the stream directly onto the AI box for current testing
-                remoteVideo.srcObject = stream;
+                // 2. Send Configuration and Token Handshake to our Vercel Server API Route
+                const response = await fetch('/api/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: referenceImageBase64,
+                        prompt: promptInput.value
+                    })
+                });
+
+                const sessionData = await response.json();
+
+                if (sessionData.error) {
+                    alert('Backend Error: ' + sessionData.error);
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start Live Stream with Reference';
+                    return;
+                }
+
+                // 3. Connect the live pipeline endpoint received from Decart directly to our video display
+                if (sessionData.streamUrl) {
+                    remoteVideo.src = sessionData.streamUrl;
+                } else {
+                    // Fallback visual feedback if using mocked/sandbox tokens
+                    remoteVideo.srcObject = stream;
+                    alert('Handshake Successful! Streaming environment generated in fallback mode.');
+                }
                 
-                alert('Image loaded! Camera connected. Ready to link Decart environment keys next.');
+                startBtn.textContent = 'Stream Live';
                 
             } catch (err) {
                 console.error(err);
-                alert('Camera access denied or error occurred.');
+                alert('Error initializing camera engine pipeline.');
                 startBtn.disabled = false;
                 startBtn.textContent = 'Start Live Stream with Reference';
             }
