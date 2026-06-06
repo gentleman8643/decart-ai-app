@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-    // Enable CORS preflight handling if browser requests it
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -16,7 +15,6 @@ export default async function handler(req, res) {
     try {
         const { image, prompt } = req.body;
 
-        // Structured configuration payload mapping for Decart API v1 requirements
         const apiPayload = {
             model: "decart-live-v1",
             input: {
@@ -26,10 +24,11 @@ export default async function handler(req, res) {
             }
         };
 
-        const response = await fetch('https://api.decart.ai/v1/video/stream/init', {
+        // UPDATED ENDPOINT: Using the unified real-time live routing structure
+        const response = await fetch('https://api.decart.ai/v1/live/stream', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${apiKey.trim()}`,
+                'Authorization': Bearer ${apiKey.trim()},
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(apiPayload)
@@ -37,7 +36,7 @@ export default async function handler(req, res) {
 
         if (!response.ok) {
             const errorDetails = await response.text();
-            return res.status(response.status).json({ error: `Decart API Error: ${errorDetails}` });
+            return res.status(response.status).json({ error: Decart System Error: ${errorDetails} });
         }
 
         const data = await response.json();
@@ -45,7 +44,6 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error("Pipeline Exception:", error);
-        return res.status(500).json({ error: `Internal execution breakdown: ${error.message}` });
+        return res.status(500).json({ error: Internal execution breakdown: ${error.message} });
     }
 }
-
