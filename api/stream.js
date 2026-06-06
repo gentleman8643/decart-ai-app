@@ -1,7 +1,7 @@
-const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+const https = require('https');
 
 module.exports = async function handler(req, res) {
-    // Enable CORS preflight handling
+    // Handle CORS preflight routing
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -22,43 +22,63 @@ module.exports = async function handler(req, res) {
             return res.status(400).json({ error: 'Missing reference image payload.' });
         }
 
-        // Strip the browser data prefix out so Decart receives pure clean base64 data
+        // Clean off the data:image prefix string safely
         const cleanBase64 = image.includes(',') ? image.split(',')[1] : image;
 
-        const apiPayload = {
+        const apiPayload = JSON.stringify({
             model: "decart-live-v1",
             input: {
                 reference_image: cleanBase64,
                 prompt: prompt || "Apply style from reference image",
                 mode: "pose_transfer"
             }
-        };
-
-        const response = await fetch('https://api.decart.ai/v1/live/stream', {
-            method: 'POST',
-            headers: {
-                'Authorization': Bearer ${apiKey.trim()},
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(apiPayload)
         });
 
-        const responseText = await response.text();
+        // Use built-in HTTPS to prevent module bundle failures on Vercel runtime
+        const options = {
+            hostname: 'api.decart.ai',
+            port: 443,
+            path: '/v1/live/stream',
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + apiKey.trim(),
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(apiPayload)
+            }
+        };
 
-        if (!response.ok) {
-            return res.status(response.status).json({ error: Decart API Error: ${responseText} });
+        const decartRequest = () => {
+            return new Promise((resolve, reject) => {
+                const request = https.request(options, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => {
+                        resolve({ status: response.statusCode, body: data });
+                    });
+                });
+
+                request.on('error', (err) => reject(err));
+                request.write(apiPayload);
+                request.end();
+            });
+        };
+
+        const result = await decartRequest();
+
+        if (result.status < 200 || result.status >= 300) {
+            return res.status(result.status).json({ error: 'Decart Engine Rejected Frame: ' + result.body });
         }
 
-        const data = JSON.parse(responseText);
-        
-        // Pack properties clearly so index.html finds sessionData.streamUrl immediately
+        const dataParsed = JSON.parse(result.body);
+
+        // Map paths directly back to the front-end layout elements
         return res.status(200).json({
-            streamUrl: data.stream_url  data.url  data.streamUrl || null,
-            sessionId: data.session_id  data.id  null
+            streamUrl: dataParsed.stream_url  dataParsed.url  dataParsed.streamUrl || null,
+            sessionId: dataParsed.session_id  dataParsed.id  null
         });
 
     } catch (error) {
         console.error("Pipeline Exception:", error);
-        return res.status(500).json({ error: Internal execution breakdown: ${error.message} });
+        return res.status(500).json({ error: 'Internal execution breakdown: ' + error.message });
     }
 };
