@@ -1,179 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Decart AI Live Stream with Reference</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-white min-h-screen flex flex-col items-center justify-center p-4">
+<script src="https://unpkg.com/@decartai/sdk"></script>
 
-    <div class="max-w-4xl w-full text-center space-y-6">
-        <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
-            Decart AI Reference Portal
-        </h1>
-        <p class="text-slate-400">Upload a reference image and type a prompt to guide the AI transformation.</p>
+<script>
+async function startLiveStream() {
+    try {
+        // 1. Fetch the temporary client token from your Vercel backend
+        const response = await fetch('/api-stream.js');
+        const tokenData = await response.json();
+        
+        if (!response.ok) throw new Error(tokenData.error || 'Token creation failed');
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800 text-left">
-            
-            <div class="md:col-span-2 space-y-2">
-                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Transformation Prompt</label>
-                <input type="text" id="promptInput" value="Apply the outfit and style from the reference image onto me" 
-                       class="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
-            </div>
+        // 2. Initialize the Decart SDK client using the generated token 
+        const client = window.createDecartClient({ apiKey: tokenData.apiKey });
+        
+        // 3. Capture camera hardware frames using standard WebRTC constraints
+        const cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { frameRate: 30, width: 1280, height: 720 },
+            audio: false
+        });
 
-            <div class="space-y-2">
-                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Reference Image</label>
-                <label class="flex flex-col items-center justify-center w-full h-12 border-2 border-slate-700 border-dashed rounded-lg cursor-pointer bg-slate-950 hover:bg-slate-900 transition">
-                    <div class="flex items-center space-x-2 text-slate-400">
-                        <span class="text-sm" id="uploadStatus">Choose Image</span>
-                    </div>
-                    <input type="file" id="imageInput" accept="image/*" class="hidden" />
-                </label>
-            </div>
+        // Feed local camera input to your interface tag
+        document.getElementById('localVideo').srcObject = cameraStream;
 
-            <div class="md:col-span-3 mt-2">
-                <button id="startBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 font-semibold py-3 rounded-lg transition-all shadow-lg shadow-indigo-500/20">
-                    Start Live Stream with Reference
-                </button>
-            </div>
-        </div>
-
-        <div id="previewContainer" class="hidden bg-slate-900 p-4 rounded-xl border border-slate-800 max-w-xs mx-auto text-center space-y-2">
-            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Selected Target Reference:</span>
-            <img id="imagePreview" src="" alt="Reference Preview" class="mx-auto max-h-40 rounded-lg border border-slate-700 object-contain shadow-md">
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden relative aspect-video">
-                <span class="absolute top-3 left-3 bg-black/60 px-3 py-1 rounded-md text-xs font-medium z-10">Your Webcam / Input</span>
-                <video id="localVideo" autoplay playsinline muted class="w-full h-full object-cover"></video>
-            </div>
-            
-            <div class="flex flex-col gap-2">
-                <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden relative aspect-video flex-1">
-                    <span class="absolute top-3 left-3 bg-indigo-600 px-3 py-1 rounded-md text-xs font-medium z-10">AI Modified Output</span>
-                    <video id="remoteVideo" autoplay playsinline class="w-full h-full object-cover"></video>
-                </div>
-                <button id="pipBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium py-2 rounded-lg transition-all border border-slate-700 flex items-center justify-center gap-2">
-                    🖥️ Pop Out Video (Picture-in-Picture)
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const startBtn = document.getElementById('startBtn');
-        const localVideo = document.getElementById('localVideo');
-        const remoteVideo = document.getElementById('remoteVideo');
-        const imageInput = document.getElementById('imageInput');
-        const uploadStatus = document.getElementById('uploadStatus');
-        const pipBtn = document.getElementById('pipBtn');
-        const promptInput = document.getElementById('promptInput');
-        const previewContainer = document.getElementById('previewContainer');
-        const imagePreview = document.getElementById('imagePreview');
-
-        let referenceImageBase64 = null;
-
-        imageInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                uploadStatus.textContent = file.name.substring(0, 15) + '...';
-                
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.onload = function() {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 300;
-                        const scaleSize = MAX_WIDTH / img.width;
-                        canvas.width = MAX_WIDTH;
-                        canvas.height = img.height * scaleSize;
-                        
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        
-                        // Save the compressed data
-                        referenceImageBase64 = canvas.toDataURL('image/jpeg', 0.6);
-                        
-                        // Update the screen so you can visually see the selected picture
-                        imagePreview.src = referenceImageBase64;
-                        previewContainer.classList.remove('hidden');
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
+        // 4. Spin up the real-time AI processing pipeline
+        const realtimeClient = await client.realtime.connect(cameraStream, {
+            model: "lucy-latest",
+            onRemoteStream: (transformedStream) => {
+                // Feed the processed AI stream straight to your output video player
+                const remoteVideo = document.getElementById('remoteVideo');
+                remoteVideo.srcObject = transformedStream;
+            },
+            onError: (err) => {
+                console.error("Realtime pipe dropped:", err);
             }
         });
 
-        pipBtn.addEventListener('click', async () => {
-            try {
-                if (document.pictureInPictureElement) {
-                    await document.exitPictureInPicture();
-                    pipBtn.textContent = '🖥️ Pop Out Video (Picture-in-Picture)';
-                } else {
-                    if (remoteVideo.srcObject || remoteVideo.src) {
-                        await remoteVideo.requestPictureInPicture();
-                        pipBtn.textContent = '📥 Return Video to Page';
-                    } else {
-                        alert('Please start the stream first.');
-                    }
-                }
-            } catch (err) {
-                alert('Picture-in-Picture not supported.');
-            }
-        });
-
-        startBtn.addEventListener('click', async () => {
-            try {
-                startBtn.disabled = true;
-                startBtn.textContent = 'Starting Camera Engine...';
-                
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                localVideo.srcObject = stream;
-                remoteVideo.srcObject = stream;
-
-                if (!referenceImageBase64) {
-                    alert('Camera connected! Select a reference image to run the styling matrix.');
-                    startBtn.disabled = false;
-                    startBtn.textContent = 'Start Live Stream with Reference';
-                    return;
-                }
-
-                startBtn.textContent = 'Connecting to Decart GPU Server...';
-                
-                const response = await fetch('/api-stream', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        image: referenceImageBase64,
-                        prompt: promptInput.value
-                    })
-                });
-
-                const sessionData = await response.json();
-
-                if (sessionData && sessionData.streamUrl) {
-                    remoteVideo.src = sessionData.streamUrl;
-                    startBtn.textContent = 'Stream Active (AI Mode)';
-                } else {
-                    startBtn.textContent = 'Stream Active (Sandbox Mode)';
-                    console.log('Server fallback loop active.');
-                }
-                
-            } catch (err) {
-                console.error(err);
-                if (localVideo.srcObject) {
-                    remoteVideo.srcObject = localVideo.srcObject;
-                    startBtn.textContent = 'Stream Active (Sandbox Mode)';
-                } else {
-                    alert('Webcam interface access could not be initialized.');
-                    startBtn.disabled = false;
-                    startBtn.textContent = 'Start Live Stream with Reference';
-                }
-            }
-        });
-    </script>
-</body>
-</html>
-
+    } catch (error) {
+        console.error("Pipeline breakdown:", error);
+        // Fall back to sandbox mock frames if the user camera blocks media requests
+        runSandboxMode();
+    }
+}
+</script>
